@@ -33,16 +33,17 @@ class JoinMessage(Message):
     """Message to join the network."""
     def __init__(self, bindPoint, reply, ip):
         super().__init__("join")
-        self.channel = bindPoint
+        self.bindPoint = bindPoint
         self.reply = reply
         self.ip = ip
 
         # fzr a convertion para json
         msg = {
             "command": self.command,
-            "bindPoint": self.channel,
-            "reply": self.channel,
-            "ip": self.channel,
+            "bindPoint": self.bindPoint,
+            "reply": self.reply,
+            "ip": self.ip
+
         }
         self.toJson(msg)
 
@@ -74,6 +75,21 @@ class JoinReply(Message):
     
 
 class AskToSolve(Message):
+    """Message to ask for avability to solve a sudoku."""
+    def __init__(self):
+        super().__init__("askToSolve")
+    
+        msg = {
+            "command": self.command
+        }
+        self.toJson(msg)
+
+    
+    def __str__(self):
+        return self._msg
+        
+
+class AgToSolve(Message):
     """Message to ask for avability to solve a sudoku."""
     def __init__(self):
         super().__init__("agToSolve")
@@ -212,6 +228,11 @@ class CDProto:
         return AskToSolve()
     
     @classmethod
+    def ag_to_solve(cls):
+        """Ask for avability to solve a sudoku."""
+        return AgToSolve()
+    
+    @classmethod
     def solve(cls, task, taskid):
         """Solve a sudoku."""
         return Solve(task, taskid)
@@ -288,6 +309,8 @@ class CDProto:
             return JoinReply(encodedMsg["bindPoint"], encodedMsg["ip"], encodedMsg["data"])
         elif encodedMsg["command"] == "ask_to_solve":
             return AskToSolve()
+        elif encodedMsg["command"] == "ag_to_solve":
+            return AgToSolve()
         elif encodedMsg["command"] == "solve":
             return Solve(encodedMsg["sudoku"], encodedMsg["sudokuId"])
         elif encodedMsg["command"] == "network":

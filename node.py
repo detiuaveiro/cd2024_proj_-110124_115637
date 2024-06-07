@@ -16,8 +16,9 @@ from http.server import HTTPServer
 from HttpServer import sudokuHTTP
 
 from sudoku import Sudoku
-
 import json
+
+from protocol import CDProto, CDProtoBadFormat
 
 # logging config 
 logging.basicConfig(filename=f"{sys.argv[0]}.log", level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -102,8 +103,9 @@ class Server:
             # send my join message
             ip = self.myip
             # print(f"hostname: {hostname}, ip: {ip}")
-            join_message = {"command":"join", "bindPoint": (self.myip, self._port), "reply": send, "ip": ip}
-            connection.sendall(json.dumps(join_message).encode())
+        
+            join_message = CDProto.join((self.myip, self._port), send, ip)
+            CDProto.send_msg(connection, join_message)
 
             logging.info(f"{self.myip}:{self._port} connected to {self.connect_to}")
 
@@ -113,17 +115,18 @@ class Server:
     def read(self, conn, mask):
         """Read incomming messages"""
         try:
-            data = conn.recv(1024)
+            data = CDProto.recv_msg(conn)
+            print(message)
 
             if data:
                 try:
-                    message = json.loads(data.decode())
+                    message = data
                     print(f'received message: {message}')
 
-                    if message['command'] == 'join':
+                    if message.command == 'join':
                         # add the connection to the bind connections
-                        host, port = message['bindPoint']
-                        ip = message['ip']
+                        host, port = message.bindPoint
+                        ip = message.ip
                         addr = (ip, int(port))
                         self.bind_connections[conn.getpeername()] = addr
 
@@ -135,18 +138,18 @@ class Server:
                         peer_data = self.network_cache.get(peer_address)
 
                         # send the list of bind connections values 
-                        print(f"reply message: {message['reply']}")
-                        if message['reply']:
+                        print(f"reply message: {message.reply}")
+                        if message.reply:
                             copy_connections = self.bind_connections.copy()
                             # remove the connection that is sending the message
                             copy_connections.pop(conn.getpeername())
                             bind_points = list(copy_connections.values())
-                            join_reply = {"command": "join_reply", 
-                                          "bindPoints": bind_points, 
-                                          "ip": self.myip,
-                                          "data": peer_data}
-                            
-                            conn.send(json.dumps(join_reply).encode())
+
+
+                            join_reply = CDProto.join_reply(bind_points,
+                             self.myip, peer_data)
+                            CDProto.send_msg(conn, join_reply)
+
 
                         # imprime a lista de conexões atualizada
                         print(f'this node connections: {self.bind_connections}')
@@ -156,39 +159,41 @@ class Server:
                         if not self.solution_found or not self.solved_event.is_set():
                             if not self.mySodokuQueue.empty():
                                 task = self.mySodokuQueue.get()
-                                solve = {"command": "solve", "sudoku": task, "sudokuId": self.current_sudoku_id}
-                                conn.send(json.dumps(solve).encode())
+                                
+                                solve = CDProto.solve(task, self.current_sudoku_id)
+                                CDProto.send_msg(conn, solve)
+
                                 self.task_list[conn.getpeername()] = task
                                 print(f"Enviou sudoku para resolver")
                             elif len(self.task_list) > 0:
                                 # pegar o trabalho do outro nó
                                 task = self.task_list.popitem()[1]
-                                solve = {"command": "solve", "sudoku": task, "sudokuId": self.current_sudoku_id}
-                                conn.send(json.dumps(solve).encode())
+                                solve = CDProto.solve(task, self.current_sudoku_id)
+                                CDProto.send_msg(conn, solve)
                                 self.task_list[conn.getpeername()] = task
                                 print(f"Enviou task de outro nó")
                 
                         logging.info(f"{self.myip}:{self._port} connected to {addr}")
 
-                    elif message['command'] == 'join_reply':
-                        print(f'received points to connect: {message["bindPoints"]}')
+                    elif message.command == 'join_reply':
+                        print(f'received points to connect: {message.bindPoints}')
 
                         # verificar se há dados no cache
-                        if message['data'] is not None:
-                            print(f"updating cache with: {message['data']}")
-                            self.solved = message['data']['solved']
-                            self.checked = message['data']['validations']
+                        if message.data is not None:
+                            print(f"updating cache with: {message.data}")
+                            self.solved = message.data.solved
+                            self.checked = message.data.validations
 
                         
                         # update peer ip
-                        ip = message['ip']
+                        ip = message.ip
                         peer = self.bind_connections[conn.getpeername()]
                         self.bind_connections[conn.getpeername()] = (ip, peer[1])
 
                         self.network[f"{self.myip}:{self._port}"].append(f"{ip}:{peer[1]}")
 
                         # connect to the other nodes
-                        for node in message['bindPoints']:
+                        for node in message.bindPoints:
                             node = tuple(node)
                             print(f'node: {node}')
                             print(f'my connections: {self.bind_connections}')
@@ -198,44 +203,45 @@ class Server:
                                 self.connect_to = node
                                 self.connect(False)
 
-                        logging.info(f"{self.myip}:{self._port} received nodes list: {message['bindPoints']}")
+                        logging.info(f"{self.myip}:{self._port} received nodes list: {message.bindPoints}")
 
-                    elif message['command'] == 'askToSolve':
+                    elif message.command == 'askToSolve':
                         print(f"Recebido comando de resolução de sudoku: {message}")
                         print(f"Asking for sudoku to solve")
-                        solve = {"command": "agToSolve"}
-                        conn.send(json.dumps(solve).encode())
+                        solve = CDProto.ag_to_solve()
+                        CDProto.send_msg(conn, solve)
                     
-                    elif message['command'] == 'agToSolve':
+                    elif message.command == 'agToSolve':
                         print(f"Recebido comando de confirmação para resolver")
                         print(f"enviando sudoku para resolver")
 
                         # ver se tem tarefas na fila
                         if not self.mySodokuQueue.empty:
                             task = self.mySodokuQueue.get()
-                            solve = {"command": "solve", "sudoku": task, "sudokuId": self.current_sudoku_id}
-                            conn.send(json.dumps(solve).encode())
+                            solve = CDProto.solve(task, self.current_sudoku_id)
+                            CDProto.send_msg(conn, solve)
 
                             self.task_list[conn.getpeername()] = task
                         
                         elif len(self.task_list) > 0:
                             # pegar o trabalho do outro nó
                             task = self.task_list.popitem()[1]
-                            solve = {"command": "solve", "sudoku": task, "sudokuId": self.current_sudoku_id}
-                            conn.send(json.dumps(solve).encode())
+                            solve = CDProto.solve(task, self.current_sudoku_id)
+                            CDProto.send_msg(conn, solve)
+
                             self.task_list[conn.getpeername()] = task
                             print(f"Enviou task de outro nó")
 
 
-                    elif message['command'] == 'network':
+                    elif message.command == 'network':
                         print(f"Recebido comando para enviar a rede")
                         my_network_list = [f"{connection[0]}:{connection[1]}" for connection in self.bind_connections.values()]
-                        network = {"command": "update_network", "network": {f"{self.myip}:{self._port}": my_network_list}, "validations": self.checked}
-                        conn.send(json.dumps(network).encode())
+                        network = CDProto.update_network({f"{self.myip}:{self._port}": my_network_list}, self.checked)
+                        CDProto.send_msg(conn, network)
 
-                    elif message['command'] == 'update_network':
+                    elif message.command == 'update_network':
                         print(f"Recebido comando para atualizar a rede")
-                        peer_network = message['network']
+                        peer_network = message.network
                         self.network.update(peer_network)
                         print(f"network updated")
 
@@ -245,22 +251,21 @@ class Server:
                             self.network_event.set()
                             self.network_count = 0
 
-                    elif message['command'] == 'solve':
+                    elif message.command == 'solve':
 
                         # store the sudoku id
-                        sudoku_id = message['sudokuId']
+                        sudoku_id = message.sudokuId
                         self.sudokuIds[sudoku_id] = False
 
                         # resolver em uma thread
                         self.pool.submit(self.solve_sudoku, message, conn)
 
-
-                    elif message['command'] == 'solution':
+                    elif message.command == 'solution':
                         # print(f"Task list: {self.task_list}, queue: {list(self.mySodokuQueue.queue), self.mySodokuQueue.qsize()}")
 
                         
-                        solved = message['solution']
-                        solvedId = message['sudokuId']
+                        solved = message.solution
+                        solvedId = message.sudokuId
                         print(f"Recebido solução: {solved}")
 
 
@@ -271,7 +276,7 @@ class Server:
 
                         if solved and not self.solution_found and self.sudokuIds.get(solvedId) is False:
                             # atualizar o sudoku com a solução
-                            self.mySodokuGrid.update_sudoku(message['sudoku'])
+                            self.mySodokuGrid.update_sudoku(message.sudoku)
                             self.solution_found = True
                             self.sudokuIds[self.current_sudoku_id] = True
                             self.solved_event.set()
@@ -282,8 +287,8 @@ class Server:
                             print(f"Enviando sudoku para resolver")
                             
                             task = self.mySodokuQueue.get()
-                            solve = {"command": "solve", "sudoku": task, "sudokuId": self.current_sudoku_id}                            
-                            conn.send(json.dumps(solve).encode())
+                            solve = CDProto.solve(task, self.current_sudoku_id)
+                            CDProto.send_msg(conn, solve)
 
                             self.task_list[conn.getpeername()] = task
                         elif self.mySodokuQueue.empty():
@@ -291,8 +296,9 @@ class Server:
                             if len(self.task_list) > 1:
                                 # pegar o trabalho do outro nó
                                 task = self.task_list.popitem()[1]
-                                solve = {"command": "solve", "sudoku": task, "sudokuId": self.current_sudoku_id}
-                                conn.send(json.dumps(solve).encode())
+                                solve = CDProto.solve(task, self.current_sudoku_id)
+                                CDProto.send_msg(conn, solve)
+
                                 self.task_list[conn.getpeername()] = task
                                 print(f"Enviou task de outro nó")
 
@@ -312,34 +318,31 @@ class Server:
                                 # send the new puzzles to the other nodes that aint working rn
                                 for node in self.connection:
                                     if node not in self.task_list.keys():
-                                        task = self.mySodokuQueue.get()
-                                        solve = {"command": "solve", "sudoku": task, "sudokuId": self.current_sudoku_id}
-                                        node.send(json.dumps(solve).encode())
+                                        solve = CDProto.solve(task, self.current_sudoku_id)
+                                        CDProto.send_msg(conn, solve)
                                         self.task_list[node.getpeername()] = task
 
                                 print(f"Enviou novas tarefas para os outros nodes")
 
-
-                    elif message['command'] == 'stop':
+                    elif message.command == 'stop':
                         # parar a resolução do sudoku
-                        ID = message['sudokuId']
+                        ID = message.sudokuId
                         if ID in self.sudokuIds:
                             self.sudokuIds.pop(ID)
 
-                    elif message['command'] == 'keep_alive':
+                    elif message.command == 'keep_alive':
                         IP = message['IP']
                         IP_status = message['status']
                         self.network_cache[IP] = IP_status
 
                         # send reply
-                        reply_message = {"command": "keep_alive_reply"}
-                        send_message = json.dumps(reply_message).encode()
-                        conn.send(send_message)
+                        reply_message = CDProto.keep_alive_reply()
+                        CDProto.send_msg(conn, reply_message)
+                        
                     
-                    elif message['command'] == 'keep_alive_reply':
+                    elif message.command == 'keep_alive_reply':
                         # set connection to true
                         self.keep_alive_nodes[conn] = True
-
 
                 except json.JSONDecodeError as e:
                     print(f"Erro ao decodificar a mensagem JSON enviada por {conn}: {e}")
@@ -356,9 +359,9 @@ class Server:
         except Exception as e:
             print(f'Erro ao ler os dados: {e}')
             # traceback.print_exc(e)
-            # exc_type, exc_obj, exc_tb = sys.exc_info()
-            # fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            # print(exc_type, fname, exc_tb.tb_lineno)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
             # self.shutdown(signal.SIGINT, None)
 
     def sudoku_received(self, sudoku):
@@ -408,8 +411,8 @@ class Server:
 
                 # enviar mensagem para os outros nodes
                 for node in self.connection:
-                    network = {"command": "network"}
-                    node.send(json.dumps(network).encode())
+                    network = CDProto.network()
+                    CDProto.send_msg(node, network)
 
                 # update my network list
                 my_network_list = [f"{connection[0]}:{connection[1]}" for connection in self.bind_connections.values()]
@@ -448,8 +451,8 @@ class Server:
                 print(len(self.connection))
                 if len(self.connection) > 0:
                     for node in self.connection:
-                        solve = {"command": "askToSolve"}
-                        node.send(json.dumps(solve).encode())
+                        solve = CDProto.ask_to_solve()
+                        CDProto.send_msg(node, solve)
                 
                 start_time = time.time()
                 print("Resolvendo sudoku...")
@@ -464,8 +467,8 @@ class Server:
 
                 # enviar stop message para os outros nodes
                 for node in self.connection:
-                    stop = {"command": "stop", "sudokuId": self.current_sudoku_id}
-                    node.send(json.dumps(stop).encode())
+                    stop = CDProto.stop(self.current_sudoku_id)
+                    CDProto.send_msg(node, stop)
                      
 
                 # clean the queue for this task dict
@@ -556,7 +559,7 @@ class Server:
             conn (socket): connection who sent the message
         """
         sudokuTask = message['sudoku']
-        ID = message['sudokuId']
+        ID = message.sudokuId
         checking_cell = tuple(sudokuTask[0])
 
         puzzle = sudokuTask[1]
@@ -572,8 +575,8 @@ class Server:
         # Send message to the node if wasn't solved yet
         if self.sudokuIds.get(ID) is not None:
             print(f"Resolvido sudoku: {result}, checked: {self.checked}")
-            response = {"command": "solution", "sudoku": sudoku.get_sudoku(), "sudokuId": ID, "solution": result}
-            conn.send(json.dumps(response).encode())
+            solution = CDProto.solution(sudoku.get_sudoku(), ID, result)
+            CDProto.send_msg(conn, solution)
         else:
             print("Thread terminada!")
         
@@ -605,17 +608,11 @@ class Server:
 
             for conn in self.connection:
                 if conn != self.sock:
-                    message = {"command": "keep_alive",
-                               "status": {
-                                    "solved": self.solved, 
-                                    "validations": self.checked
-                                },
-                                 "IP": f"{self.myip}:{self._port}"
-                              }
-                    conn.send(json.dumps(message).encode())
+                    
+                    keep_alive = CDProto.keep_alive(self.solved, self.checked, f"{self.myip}:{self._port}")
+                    CDProto.send_msg(conn, keep_alive)
 
                     # set connection to false
-                    # print(f"keep alive for {conn.getpeername()}, {self.keep_alive_nodes}")
                     self.keep_alive_nodes[conn] = False
 
             time.sleep(3)
