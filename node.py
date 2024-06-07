@@ -599,13 +599,13 @@ class Server:
         """Enviar uma mensagem periodica aos nodes para verificar se ainda estão conectados"""
 
         while True: 
-            print("Checking bros ...")
-            
             # skip if im alone
             if len(self.connection) == 0:
                 time.sleep(5)
                 continue
 
+            print("Checking bros ...")
+            
             for conn in self.connection:
                 if conn != self.sock:
                     

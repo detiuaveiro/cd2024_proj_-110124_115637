@@ -3,6 +3,8 @@ import json
 from datetime import datetime
 from socket import socket
 
+import os, sys
+
 
 class Message:
     """Message Type."""
@@ -110,12 +112,12 @@ class Solve(Message):
     def __init__(self, task, taskid):
         super().__init__("solve")
         self.sudoku = task
-        self.taskid = taskid
+        self.sudokuId = taskid
 
         msg = {
             "command": self.command,
             "sudoku": self.sudoku,
-            "sudokuId": self.taskid
+            "sudokuId": self.sudokuId
             }
 
         self.toJson(msg)
@@ -309,9 +311,9 @@ class CDProto:
             return JoinMessage(encodedMsg["bindPoint"], encodedMsg["reply"], encodedMsg["ip"])
         elif encodedMsg["command"] == "join_reply":
             return JoinReply(encodedMsg["bindPoint"], encodedMsg["ip"], encodedMsg["data"])
-        elif encodedMsg["command"] == "ask_to_solve":
+        elif encodedMsg["command"] == "askToSolve":
             return AskToSolve()
-        elif encodedMsg["command"] == "ag_to_solve":
+        elif encodedMsg["command"] == "agToSolve":
             return AgToSolve()
         elif encodedMsg["command"] == "solve":
             return Solve(encodedMsg["sudoku"], encodedMsg["sudokuId"])
