@@ -116,7 +116,7 @@ class Server:
         """Read incomming messages"""
         try:
             data = CDProto.recv_msg(conn)
-            print(message)
+            print(data)
 
             if data:
                 try:
@@ -331,8 +331,8 @@ class Server:
                             self.sudokuIds.pop(ID)
 
                     elif message.command == 'keep_alive':
-                        IP = message['IP']
-                        IP_status = message['status']
+                        IP = message.IP
+                        IP_status = message.status
                         self.network_cache[IP] = IP_status
 
                         # send reply
