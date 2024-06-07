@@ -116,12 +116,12 @@ class Server:
         """Read incomming messages"""
         try:
             data = CDProto.recv_msg(conn)
-            print(data)
+            # print(data)
 
             if data:
                 try:
                     message = data
-                    print(f'received message: {message}')
+                    print(f'received message: {message.command}')
 
                     if message.command == 'join':
                         # add the connection to the bind connections
@@ -176,7 +176,7 @@ class Server:
                         logging.info(f"{self.myip}:{self._port} connected to {addr}")
 
                     elif message.command == 'join_reply':
-                        print(f'received points to connect: {message.bindPoints}')
+                        print(f'received points to connect: {message.bindPoint}')
 
                         # verificar se há dados no cache
                         if message.data is not None:
@@ -193,7 +193,7 @@ class Server:
                         self.network[f"{self.myip}:{self._port}"].append(f"{ip}:{peer[1]}")
 
                         # connect to the other nodes
-                        for node in message.bindPoints:
+                        for node in message.bindPoint:
                             node = tuple(node)
                             print(f'node: {node}')
                             print(f'my connections: {self.bind_connections}')
@@ -203,7 +203,7 @@ class Server:
                                 self.connect_to = node
                                 self.connect(False)
 
-                        logging.info(f"{self.myip}:{self._port} received nodes list: {message.bindPoints}")
+                        logging.info(f"{self.myip}:{self._port} received nodes list: {message.bindPoint}")
 
                     elif message.command == 'askToSolve':
                         print(f"Recebido comando de resolução de sudoku: {message}")

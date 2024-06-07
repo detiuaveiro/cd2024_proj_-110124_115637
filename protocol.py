@@ -185,6 +185,10 @@ class KeepAlive(Message):
         self.solved = solved
         self.validations = validations
         self.IP = IP
+        self.status = {
+                "solved": self.solved,
+                "validations": self.validations,
+            }
 
         msg = {
             "command": self.command,
@@ -200,10 +204,8 @@ class KeepAlive(Message):
 class KeepAliveReply(Message):
     """Message to confirm node ping."""
 
-    def __init__(self, task, taskid):
+    def __init__(self):
         super().__init__("keep_alive_reply")
-        self.sudoku = task
-        self.taskid = taskid
 
         msg = {"command": self.command}
 
@@ -263,9 +265,9 @@ class CDProto:
         return KeepAlive(solved, validations, IP)
     
     @classmethod
-    def keep_alive_reply(cls, task, taskid):
+    def keep_alive_reply(cls):
         """Confirm node ping."""
-        return KeepAliveReply(task, taskid)
+        return KeepAliveReply()
 
     @classmethod
     def send_msg(cls, connection: socket, msg: Message):
@@ -324,7 +326,7 @@ class CDProto:
         elif encodedMsg["command"] == "keep_alive":
             return KeepAlive(encodedMsg["status"]["solved"], encodedMsg["status"]["validations"], encodedMsg["IP"])
         elif encodedMsg["command"] == "keep_alive_reply":
-            return KeepAliveReply(encodedMsg["sudoku"], encodedMsg["sudokuId"])
+            return KeepAliveReply()
         
         else:
             raise CDProtoBadFormat(msg)
