@@ -115,8 +115,8 @@ class Server:
     def read(self, conn, mask):
         """Read incomming messages"""
         try:
+            print(data)
             data = CDProto.recv_msg(conn)
-            # print(data)
 
             if data:
                 try:

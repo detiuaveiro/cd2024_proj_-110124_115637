@@ -188,15 +188,15 @@ class KeepAlive(Message):
         self.validations = validations
         self.IP = IP
         self.status = {
-                "solved": self.solved,
-                "validations": self.validations,
+                "solved": solved,
+                "validations": validations,
             }
 
         msg = {
             "command": self.command,
             "status": {
                 "solved": self.solved,
-                "validations": self.validations,
+                "validations": self.validations
             },
                 "IP": self.IP
             }
